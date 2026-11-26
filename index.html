@@ -2,7 +2,6 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="robots" content="noindex, nofollow, noai, noimageai" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>Dashboard DPK Non Wholesale</title>
@@ -184,13 +183,17 @@ html.is-loading .wrap{display:none}
 html.no-data .filters,html.no-data .srcbadge{display:none}
 #tabs .pill[disabled]{opacity:.38;cursor:not-allowed}
 .filters[hidden],.filters .field[hidden]{display:none !important}
+.pj-methods{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 12px;align-items:center}
+.pj-methods .pill[disabled]{opacity:.4;cursor:not-allowed}
+#pjCtl.off{opacity:.45}
+#pjAreaWrap[hidden]{display:none}
 </style>
 <script data-app>
 /* ================= PENGATURAN SERVER DATA (untuk hosting sendiri) =================
    Tempel URL Web App Google Apps Script (berakhiran /exec) di antara tanda kutip di bawah.
    Bila diisi, setiap unggahan disimpan di server dan langsung tampil untuk semua pengunjung,
    dan halaman menampilkan "Memuat data…" sampai data dari server berhasil dimuat. */
-const API_URL = "https://script.google.com/macros/s/AKfycbyPRsLLCqfefDPmm2pen_ndvTR07mqMsXLgmavwDhrxizQG0osekCk7XvlRtwmhG-41/exec";
+const API_URL = "";
 if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.use)) document.documentElement.classList.add('is-loading');
 </script>
 </head>
@@ -546,21 +549,37 @@ if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.u
 
   <!-- ============ PROYEKSI ============ -->
   <section class="sec" data-sec="proyeksi" id="sec-proyeksi" hidden>
-    <div class="note"><b>Simulasi sederhana, bukan prakiraan resmi.</b> Proyeksi akhir bulan = posisi terbaru + arus harian × hari tersisa. Atur arus harian per produk dengan geser atau pilih preset. Nilai awal diambil dari tren MTD bulan berjalan.</div>
-    <div class="ctl">
-      <div class="slider" style="--c:var(--cyan)"><div class="top"><b>Giro</b><output id="oGiro">0</output></div><input type="range" id="rGiro" min="-150" max="150" step="0.5" value="0" aria-label="Arus harian giro, M per hari"><div class="hint">Arus harian (M/hari)</div></div>
-      <div class="slider" style="--c:var(--blue)"><div class="top"><b>Tabungan</b><output id="oTab">0</output></div><input type="range" id="rTab" min="-150" max="150" step="0.5" value="0" aria-label="Arus harian tabungan, M per hari"><div class="hint">Arus harian (M/hari)</div></div>
-      <div class="slider" style="--c:var(--orange)"><div class="top"><b>Deposito</b><output id="oDep">0</output></div><input type="range" id="rDep" min="-150" max="150" step="0.5" value="0" aria-label="Arus harian deposito, M per hari"><div class="hint">Arus harian (M/hari)</div></div>
-      <div class="slider" style="--c:var(--navy)"><div class="top"><b>Hari tersisa</b><output id="oDays">11</output></div><input type="range" id="rDays" min="1" max="11" step="1" value="11" aria-label="Jumlah hari tersisa sampai akhir bulan"><div class="hint">Sisa hari sampai akhir bulan</div></div>
+    <div class="note"><b>Proyeksi tabungan, bukan prakiraan resmi.</b> Proyeksi = posisi tabungan terbaru + arus harian sampai akhir bulan. Pilih metode di bawah, atau atur sendiri arus hari kerja dan akhir pekan dengan penggeser. Wilayah mengikuti filter di atas.</div>
+    <div class="pj-methods" id="pjMethods" role="group" aria-label="Metode proyeksi"></div>
+    <div class="ctl" id="pjCtl">
+      <div class="slider" style="--c:var(--blue)"><div class="top"><b>Arus hari kerja (Sen–Jum)</b><output id="pjWdOut">0</output></div><input type="range" id="pjWd" min="-100" max="100" step="0.5" value="0" aria-label="Arus tabungan hari kerja, M per hari"><div class="hint">M per hari, setiap Senin–Jumat yang tersisa</div></div>
+      <div class="slider" style="--c:#c8402f"><div class="top"><b>Arus Sabtu–Minggu</b><output id="pjWeOut">0</output></div><input type="range" id="pjWe" min="-100" max="100" step="0.5" value="0" aria-label="Arus tabungan akhir pekan, M per hari"><div class="hint">M per hari, setiap Sabtu dan Minggu yang tersisa</div></div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-      <span class="hint" style="margin-right:4px">Preset:</span>
-      <button class="pill" data-preset="mtd">Tren MTD</button>
-      <button class="pill" data-preset="dtd">Tren DTD</button>
-      <button class="pill" data-preset="ytd">Tren YTD</button>
-      <button class="pill" data-preset="nol">Arus nol</button>
+    <div class="hint" id="pjBasis" style="margin-top:8px"></div>
+    <div id="projOut">
+      <div class="kpis" id="pjKpi" style="margin-top:14px"></div>
+      <div class="panel" style="--c:var(--navy);margin-top:14px">
+        <h3>Jalur tabungan sampai akhir bulan</h3>
+        <div class="desc">Garis biru tua: posisi aktual harian bulan ini. Garis biru putus-putus: proyeksi, dengan pita kisaran 80%. Garis abu-abu: bulan lalu pada tanggal yang sama. Kolom merah muda dan hari berwarna merah: Sabtu dan Minggu. Arahkan kursor ke grafik untuk rincian per tanggal.</div>
+        <div class="chart" id="chPj"></div>
+        <div class="legend" id="legPj"></div>
+      </div>
+      <div class="panel" style="--c:var(--blue);margin-top:14px">
+        <h3>Proyeksi per hari</h3>
+        <div class="desc">Arus harian, proyeksi posisi, kisaran, dan perbandingan dengan bulan lalu pada tanggal yang sama.</div>
+        <div id="tblPjDay"></div>
+      </div>
+      <div class="panel" id="pjAreaWrap" style="--c:var(--cyan);margin-top:14px">
+        <h3>Proyeksi per wilayah</h3>
+        <div class="desc">Metode yang sama diterapkan pada data harian setiap wilayah. Urut dari selisih terhadap RKA terkecil.</div>
+        <div id="tblPjArea"></div>
+      </div>
+      <div class="panel" style="--c:var(--orange);margin-top:14px">
+        <h3>Proyeksi per kanca</h3>
+        <div class="desc" id="pjKancaDesc"></div>
+        <div id="tblPjKanca"></div>
+      </div>
     </div>
-    <div id="projOut"></div>
   </section>
 
   <div class="foot" id="foot">Belum ada data.</div>
@@ -1129,77 +1148,256 @@ function sboMovers(list, P, baseOf){
     <div><div class="eyebrow" style="color:var(--neg);margin-bottom:4px">Turun</div>${li(dn)}</div></div>`;
 }
 
-/* --- Proyeksi --- */
-function presetRates(name){
-  const L = scopeKanca(), r = {};
-  ['giro','tab','dep'].forEach(p => {
-    const d = deltas(L,p);
-    let perDay = 0;
-    if (name==='mtd') perDay = d.mtd / DAYS_ELAPSED;
-    else if (name==='dtd') perDay = d.dtd;
-    else if (name==='ytd') perDay = d.ytd / DAYS_YTD;
-    r[p] = Math.round(perDay/1000*10)/10; // juta -> M, 0.1 precision
-  });
-  return r;
+/* --- Proyeksi TABUNGAN akhir bulan --- */
+// Sumber: posisi & RKA & Rencana Kerja dari file DPK harian (juta), deret harian dari file Template Trend Line (M).
+const PJ_METHODS = [
+  {k:'pola', label:'Pola hari kerja & akhir pekan', daily:true},
+  {k:'bulanlalu', label:'Ikuti bulan lalu', daily:true},
+  {k:'mtd', label:'Rata-rata MTD', daily:false},
+  {k:'avg7', label:'Rata-rata 7 hari', daily:true},
+  {k:'nol', label:'Arus nol', daily:false},
+];
+const PJ_WINDOW = 56;          // 8 minggu terakhir untuk pola hari & kisaran
+const PJ_Z = 1.2816;           // kisaran 80%
+const PJ_C = {act:'#0f2747', proj:'#0754bf', band:'#cfe0f7', prev:'#8a9bb4', rka:'#c8402f', rk:'#e97132'};
+function pjMonthNum(name){
+  const a = String(name||''); let i = MON_ID.indexOf(a); if (i>0) return i;
+  i = MON_S.indexOf(a); if (i>=0) return i+1;
+  return MONTHS[a.slice(0,3).toUpperCase()] || null;
 }
-function applyRates(rates){
-  ['giro','tab','dep'].forEach(p => {
-    const id = {giro:'rGiro', tab:'rTab', dep:'rDep'}[p];
-    $('#'+id).value = rates[p];
-    S.proj[p] = Number(rates[p]);
-  });
+const pjIso = (y,m,d) => `${y}-${pad2(m)}-${pad2(d)}`;
+const pjDaysIn = (y,m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const pjUtc = iso => { const [y,m,d] = iso.split('-').map(Number); return Date.UTC(y, m-1, d); };
+const pjLbl = iso => { const [y,m,d] = iso.split('-').map(Number); return `${d} ${MON_S[m-1]} ${y}`; };
+const pjM = v => fmtM(v*1000);                       // M -> teks "Rp ... M" gaya dashboard
+const pjMs = v => fmtM(v*1000, {sign:true});
+const pjR = v => fmtRate(Math.round(v*10)/10, true) + '/hari';
+function pjCdf(x){ const t = 1/(1+0.3275911*Math.abs(x)/Math.SQRT2), y = 1 - (((((1.061405429*t - 1.453152027)*t) + 1.421413741)*t - 0.284496736)*t + 0.254829592)*t*Math.exp(-(x*x)/2); return 0.5*(1 + Math.sign(x)*y); }
+
+function pjCtx(){
+  const m = D.meta, mon = pjMonthNum(m.monthName), y = m.year, day = m.day;
+  if (!mon) return null;
+  const last = pjDaysIn(y, mon), pm = mon===1 ? 12 : mon-1, py = mon===1 ? y-1 : y;
+  return {y, mon, day, last, pm, py, pLast: pjDaysIn(py, pm), asIso: pjIso(y, mon, day), left: last - day};
 }
-function initProj(){ if (S.proj.giro==null) { S.proj.preset='mtd'; applyRates(presetRates('mtd')); } }
+// Deret harian tabungan (M) untuk sekumpulan kanca: jumlah BO dengan nama yang sama di file tren.
+function pjSeries(list){
+  if (!TR || !Array.isArray(TR.bo) || !TR.dates) return null;
+  const names = new Set(list.map(k => k.name));
+  const bos = TR.bo.filter(b => names.has(b.name));
+  if (!bos.length) return null;
+  const map = new Map();
+  TR.dates.forEach((d,i) => { let s = 0, ok = true; for (const b of bos){ const v = b.v[i]; if (v==null){ ok = false; break; } s += v; } if (ok) map.set(d, s); });
+  return {map, n: bos.length, of: list.length};
+}
+const pjSt = arr => { const n = arr.length; if (!n) return {avg:0, sd:0, n:0};
+  const avg = arr.reduce((s,x) => s+x, 0)/n; const sd = n>1 ? Math.sqrt(arr.reduce((s,x) => s+(x-avg)**2, 0)/(n-1)) : 0; return {avg, sd, n}; };
+function pjStats(ser, ctx){
+  if (!ser) return null;
+  const dates = TR.dates.filter(d => d <= ctx.asIso), ch = [];
+  for (let i=1;i<dates.length;i++){
+    const a = ser.map.get(dates[i-1]), b = ser.map.get(dates[i]);
+    if (a==null || b==null || pjUtc(dates[i]) - pjUtc(dates[i-1]) !== 86400000) continue;
+    ch.push({iso:dates[i], we:trWeekend(dates[i]), c:b-a});
+  }
+  if (!ch.length) return null;
+  const win = ch.slice(-PJ_WINDOW);
+  return {from: win[0].iso, to: win[win.length-1].iso, wd: pjSt(win.filter(x => !x.we).map(x => x.c)), we: pjSt(win.filter(x => x.we).map(x => x.c)),
+          last7: pjSt(ch.slice(-7).map(x => x.c)), all: pjSt(win.map(x => x.c))};
+}
+// Perubahan harian bulan lalu pada tanggal yang sama; hari terakhir bulan ini menampung sisa sampai akhir bulan lalu.
+function pjPrevChange(ser, ctx, d){
+  if (!ser || d > ctx.pLast) return 0;
+  const a = ser.map.get(pjIso(ctx.py, ctx.pm, d-1)), endD = d===ctx.last ? ctx.pLast : d, b = ser.map.get(pjIso(ctx.py, ctx.pm, endD));
+  if (d===1){ const pe = ser.map.get(pjIso(ctx.pm===1 ? ctx.py-1 : ctx.py, ctx.pm===1 ? 12 : ctx.pm-1, pjDaysIn(ctx.pm===1 ? ctx.py-1 : ctx.py, ctx.pm===1 ? 12 : ctx.pm-1))); return (pe!=null && b!=null) ? b-pe : 0; }
+  return (a!=null && b!=null) ? b-a : 0;
+}
+// Arus per hari (M) untuk satu cakupan: fungsi (tanggal) -> arus
+function pjRateFn(method, list, ser, stt, ctx, custom, share){
+  if (method==='custom'){ return d => (trWeekend(pjIso(ctx.y, ctx.mon, d)) ? custom.we : custom.wd) * share; }
+  if (method==='mtd'){ const r = (sumOf(list,'n19','tab') - sumOf(list,'okt','tab'))/1000/Math.max(1, D.meta.daysElapsed); return () => r; }
+  if (method==='nol' || !stt) return () => 0;
+  if (method==='pola') return d => trWeekend(pjIso(ctx.y, ctx.mon, d)) ? stt.we.avg : stt.wd.avg;
+  if (method==='avg7') return () => stt.last7.avg;
+  if (method==='bulanlalu') return d => pjPrevChange(ser, ctx, d);
+  return () => 0;
+}
+function pjRun(method, list, ctx, custom, share){
+  const ser = pjSeries(list), stt = pjStats(ser, ctx);
+  const n19 = sumOf(list,'n19','tab')/1000, rka = sumOf(list,'rka','tab')/1000;
+  const rk = list.reduce((a,k) => a + ((k.tabNws && k.tabNws.proj30) || 0), 0)/1000;
+  const fn = pjRateFn(method, list, ser, stt, ctx, custom, share==null ? 1 : share);
+  const sdOf = d => !stt ? 0 : (method==='pola' || method==='custom' || method==='bulanlalu')
+    ? (trWeekend(pjIso(ctx.y, ctx.mon, d)) ? stt.we.sd : stt.wd.sd) : stt.all.sd;
+  const path = []; let p = n19, vr = 0;
+  for (let d=ctx.day+1; d<=ctx.last; d++){ const c = fn(d); p += c; vr += sdOf(d)**2; path.push({d, iso:pjIso(ctx.y, ctx.mon, d), c, v:p, lo:p - PJ_Z*Math.sqrt(vr), hi:p + PJ_Z*Math.sqrt(vr)}); }
+  const end = path.length ? path[path.length-1] : {v:n19, lo:n19, hi:n19};
+  const sdEnd = Math.sqrt(vr);
+  return {ser, stt, n19, rka, rk, path, proj:end.v, lo:end.lo, hi:end.hi, sdEnd,
+    pAbove: sdEnd>0 ? 1 - pjCdf((rka - end.v)/sdEnd) : (end.v>=rka ? 1 : 0),
+    needRka: ctx.left ? (rka - n19)/ctx.left : 0, needRk: ctx.left ? (rk - n19)/ctx.left : 0,
+    avgRate: ctx.left ? (end.v - n19)/ctx.left : 0};
+}
+function pjDefaults(list, ctx){
+  const ser = pjSeries(list), stt = pjStats(ser, ctx);
+  const m = S.pj.method;
+  if (m==='pola' && stt) return {wd:stt.wd.avg, we:stt.we.avg};
+  if (m==='avg7' && stt) return {wd:stt.last7.avg, we:stt.last7.avg};
+  if (m==='mtd'){ const r = (sumOf(list,'n19','tab') - sumOf(list,'okt','tab'))/1000/Math.max(1, D.meta.daysElapsed); return {wd:r, we:r}; }
+  return {wd:0, we:0};
+}
+function initProj(){ if (!S.pj) S.pj = {method:'pola', custom:null}; }
+function resetProjIfScope(){ if (!S.pj) return; S.pj.custom = null; if (S.pj.method==='custom') S.pj.method = 'pola'; }
+
+function pjChart(w, h, ctx, run, scopeLabel){
+  const ser = run.ser, last = ctx.last, l = 62, r = 16, t = 16, axisH = 44, b = h - axisH;
+  const step = (w-l-r)/(last-1), x = d => l + (d-1)*step;
+  const cur = [], prev = [];
+  for (let d=1; d<=last; d++){
+    let v = d<=ctx.day && ser ? ser.map.get(pjIso(ctx.y, ctx.mon, d)) : null; if (d===ctx.day) v = run.n19;
+    cur.push(v==null ? null : v);
+    const pv = ser && d<=ctx.pLast ? ser.map.get(pjIso(ctx.py, ctx.pm, d)) : null; prev.push(pv==null ? null : pv);
+  }
+  const vals = [...cur, ...prev, run.rka, run.rk, ...run.path.flatMap(p => [p.lo, p.hi])].filter(v => v!=null && isFinite(v) && v>0);
+  let max = Math.max(...vals), min = Math.min(...vals); const pad = (max-min)*0.08 || max*0.01; max += pad; min -= pad;
+  const y = v => t + (max-v)/(max-min)*(b-t);
+  let s = '';
+  for (let d=1; d<=last; d++){ if (!trWeekend(pjIso(ctx.y, ctx.mon, d))) continue;
+    const a = Math.max(l-4, x(d)-step/2), bb = Math.min(w-r+4, x(d)+step/2);
+    s += `<rect x="${a.toFixed(1)}" y="${t}" width="${(bb-a).toFixed(1)}" height="${(b-t).toFixed(1)}" fill="${TR_WE_BG}"/>`; }
+  for (let k=0;k<=4;k++){ const v = min+(max-min)*k/4, yy = y(v);
+    s += `<line x1="${l}" x2="${w-r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#e7eef8"/><text x="${l-8}" y="${(yy+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#6b7b93">${esc(nfmt(v,0))}</text>`; }
+  // garis bawah: posisi terakhir
+  s += `<line x1="${x(ctx.day).toFixed(1)}" x2="${x(ctx.day).toFixed(1)}" y1="${t}" y2="${b}" stroke="#9fb0c7" stroke-dasharray="3 3"/>`;
+  s += `<text x="${(x(ctx.day)-4).toFixed(1)}" y="${t+10}" text-anchor="end" font-size="10.5" fill="#34496a">posisi terakhir</text>`;
+  // pita kisaran
+  if (run.path.length && run.sdEnd>0){
+    const up = [{d:ctx.day, v:run.n19}, ...run.path.map(p => ({d:p.d, v:p.hi}))], dn = [...run.path.map(p => ({d:p.d, v:p.lo})).reverse(), {d:ctx.day, v:run.n19}];
+    s += `<path d="M${up.map(p => x(p.d).toFixed(1)+' '+y(p.v).toFixed(1)).join(' L')} L${dn.map(p => x(p.d).toFixed(1)+' '+y(p.v).toFixed(1)).join(' L')} Z" fill="${PJ_C.band}" opacity=".7"/>`;
+  }
+  const hline = (v, col, lbl) => { const yy = y(v).toFixed(1);
+    return `<line x1="${l}" x2="${w-r}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-width="1.6" stroke-dasharray="7 5"/><text x="${l+4}" y="${(y(v)-5).toFixed(1)}" font-size="10.5" font-weight="700" fill="${col}" stroke="#fff" stroke-width="3.5" paint-order="stroke">${esc(lbl)}</text>`; };
+  const pth = arr => { let d='', pen=false; arr.forEach((v,i) => { if (v==null){ pen=false; return; } d += (pen?'L':'M') + x(i+1).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen=true; }); return d; };
+  s += `<path d="${pth(prev)}" fill="none" stroke="${PJ_C.prev}" stroke-width="2" stroke-linejoin="round"/>`;
+  s += `<path d="${pth(cur)}" fill="none" stroke="${PJ_C.act}" stroke-width="2.4" stroke-linejoin="round"/>`;
+  if (run.path.length) s += `<path d="M${x(ctx.day).toFixed(1)} ${y(run.n19).toFixed(1)} ${run.path.map(p => 'L'+x(p.d).toFixed(1)+' '+y(p.v).toFixed(1)).join(' ')}" fill="none" stroke="${PJ_C.proj}" stroke-width="2.4" stroke-dasharray="6 4"/>`;
+  run.path.forEach(p => { const we = trWeekend(p.iso);
+    s += `<circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${we?3.6:3}" fill="${we?TR_WE:'#fff'}" stroke="${we?TR_WE:PJ_C.proj}" stroke-width="1.8"/>`; });
+  s += `<circle cx="${x(ctx.day).toFixed(1)}" cy="${y(run.n19).toFixed(1)}" r="4" fill="${PJ_C.act}"/>`;
+  if (run.rka>0) s += hline(run.rka, PJ_C.rka, `RKA ${nfmt(run.rka,0)}`);
+  if (run.rk>0) s += hline(run.rk, PJ_C.rk, `${w<520 ? 'RK' : 'Rencana Kerja'} ${nfmt(run.rk,0)}`);
+  if (run.path.length){ const e = run.path[run.path.length-1];
+    s += `<text x="${(x(e.d)-6).toFixed(1)}" y="${(y(e.v)-9).toFixed(1)}" text-anchor="end" font-size="11.5" font-weight="700" fill="${PJ_C.proj}" stroke="#fff" stroke-width="3.5" paint-order="stroke">${esc(nfmt(e.v,0))}</text>`; }
+  // sumbu tanggal + hari
+  const every = Math.max(1, Math.ceil(26/step)); let lastX = -1e9;
+  for (let d=1; d<=last; d++){
+    if ((d-1) % every && d!==ctx.day && d!==last) continue;
+    if (x(d) - lastX < 22) continue; lastX = x(d);
+    const iso = pjIso(ctx.y, ctx.mon, d), g = trDow(iso), we = g===0 || g===6;
+    s += `<text x="${x(d).toFixed(1)}" y="${b+14}" text-anchor="middle" font-size="10.5" font-weight="${we?700:500}" fill="${we?TR_WE:'#34496a'}">${d}</text>`;
+    s += `<text x="${x(d).toFixed(1)}" y="${b+26}" text-anchor="middle" font-size="9.5" font-weight="${we?700:400}" fill="${we?TR_WE:'#6b7b93'}">${HARI_S[g]}</text>`;
+  }
+  s += `<text x="${l}" y="${b+40}" font-size="10" font-weight="600" fill="#0f2747">${esc(MON_S[ctx.mon-1]+' '+ctx.y)}${w<600 ? '' : ` · garis abu-abu: ${esc(MON_S[ctx.pm-1]+' '+ctx.py)} pada tanggal yang sama`}</text>`;
+  // tooltip per tanggal
+  for (let d=1; d<=last; d++){
+    const iso = pjIso(ctx.y, ctx.mon, d), g = trDow(iso), pIso = d<=ctx.pLast ? pjIso(ctx.py, ctx.pm, d) : null;
+    const pp = run.path.find(p => p.d===d);
+    let tip = `<b>${HARI[g]}, ${esc(pjLbl(iso))}</b>${g===0||g===6 ? ' · akhir pekan' : ''}`;
+    if (pp) tip += `<br>Proyeksi: <b>${esc(trFmt(pp.v))}</b> (arus ${esc(trFmt(pp.c,true))})` + (run.sdEnd>0 ? `<br>Kisaran 80%: ${esc(nfmt(pp.lo,0))} – ${esc(nfmt(pp.hi,0))} M` : '');
+    else if (cur[d-1]!=null) tip += `<br>Aktual: <b>${esc(trFmt(cur[d-1]))}</b>`;
+    if (pIso && prev[d-1]!=null){ const ref = pp ? pp.v : cur[d-1];
+      tip += `<br>Bulan lalu (${HARI[trDow(pIso)]}, ${esc(pjLbl(pIso))}): ${esc(trFmt(prev[d-1]))}` + (ref!=null ? `<br>Selisih vs bulan lalu: ${esc(trFmt(ref-prev[d-1], true))}` : ''); }
+    s += `<rect x="${(x(d)-step/2).toFixed(1)}" y="${t}" width="${Math.max(1,step).toFixed(2)}" height="${(b-t).toFixed(1)}" fill="transparent" data-tip="${tip}"/>`;
+  }
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="Proyeksi tabungan ${esc(scopeLabel)} sampai akhir bulan">${s}</svg>`;
+}
+
 TAB_RENDER.proyeksi = () => {
   initProj();
-  $$('[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset===S.proj.preset));
-  const days = Number($('#rDays').value);
-  $('#oDays').textContent = String(days);
-  ['giro','tab','dep'].forEach(p => { const id={giro:'oGiro',tab:'oTab',dep:'oDep'}[p]; $('#'+id).textContent = fmtRate(S.proj[p]); });
-  const L = scopeKanca();
-  const rows = ['giro','tab','dep'].map(p => {
-    const n19 = sumOf(L,'n19',p), rka = sumOf(L,'rka',p);
-    const proj = n19 + S.proj[p]*1000*days;
-    return {p, label:PROD[p].label, n19, rate:S.proj[p], proj, rka, ach: proj/rka, gap: proj-rka};
-  });
-  const tot = {p:'dpk', label:'DPK total', n19: sumOf(L,'n19','dpk'), rate: rows.reduce((a,r)=>a+r.rate,0), proj: rows.reduce((a,r)=>a+r.proj,0), rka: sumOf(L,'rka','dpk')};
-  tot.ach = tot.proj/tot.rka; tot.gap = tot.proj - tot.rka;
-  const all = [...rows, tot];
-  const cols = [
-    {h:'Produk', l:true, v:r=>r.label, f:r=>`<span class="dot" style="background:${PROD[r.p].color}"></span>${esc(r.label)}`, t:r=>r.label},
-    {h:'Posisi terbaru', v:r=>r.n19, f:r=>esc(fmtM(r.n19)), t:r=>fmtM(r.n19,{unit:false})},
-    {h:'Arus harian', v:r=>r.rate, f:r=>`<span class="${cls(r.rate)}">${esc(fmtRate(r.rate, true))} M/hr</span>`, t:r=>fmtRate(r.rate,true)},
-    {h:'Proyeksi akhir bulan', v:r=>r.proj, f:r=>`<b>${esc(fmtM(r.proj))}</b>`, t:r=>fmtM(r.proj,{unit:false})},
-    {h:'RKA bulan ini', v:r=>r.rka, f:r=>esc(fmtM(r.rka)), t:r=>fmtM(r.rka,{unit:false})},
-    {h:'% RKA', v:r=>r.ach, f:r=>`<span class="tag ${r.ach>=1?'ok':'bad'}">${fmtPct(r.ach)}</span>`, t:r=>fmtPct(r.ach)},
-    {h:'Selisih vs RKA', v:r=>r.gap, f:r=>`<span class="${cls(r.gap)}">${esc(fmtM(r.gap,{sign:true}))}</span>`, t:r=>fmtM(r.gap,{unit:false,sign:true})},
+  const ctx = pjCtx(); if (!ctx){ $('#projOut').innerHTML = '<div class="empty">Tanggal posisi tidak terbaca.</div>'; return; }
+  const L = scopeKanca(), serAll = pjSeries(L), sttAll = pjStats(serAll, ctx), hasDaily = !!sttAll;
+  if (!hasDaily && PJ_METHODS.find(m => m.k===S.pj.method && m.daily)){ S.pj.fallbackFrom = S.pj.method; S.pj.method = 'mtd'; }
+  else if (hasDaily && S.pj.fallbackFrom){ S.pj.method = S.pj.fallbackFrom; S.pj.fallbackFrom = null; }
+  // tombol metode
+  $('#pjMethods').innerHTML = PJ_METHODS.map(m => `<button class="pill${S.pj.method===m.k?' on':''}" data-pjm="${m.k}" type="button"${(m.daily && !hasDaily)?' disabled':''}>${esc(m.label)}</button>`).join('')
+    + (S.pj.method==='custom' ? `<span class="tag warn">Diatur manual</span>` : '');
+  // penggeser
+  const def = S.pj.custom || pjDefaults(L, ctx);
+  const baseMag = sttAll ? Math.max(Math.abs(sttAll.wd.avg), Math.abs(sttAll.we.avg), sttAll.all.sd) : Math.max(Math.abs(def.wd), 10);
+  const lim = Math.max(20, Math.ceil(baseMag * 2.5 / 10) * 10);
+  [['pjWd', def.wd], ['pjWe', def.we]].forEach(([id, v]) => { const el = $('#'+id); el.min = String(-lim); el.max = String(lim); el.value = String(Math.round(v*2)/2); el.disabled = S.pj.method==='bulanlalu'; });
+  $('#pjWdOut').textContent = pjR(def.wd); $('#pjWeOut').textContent = pjR(def.we);
+  $('#pjCtl').classList.toggle('off', S.pj.method==='bulanlalu');
+  const run = pjRun(S.pj.method, L, ctx, S.pj.custom);
+  const scope = scopeName(), mPrev = MON_S[ctx.pm-1], mCur = MON_S[ctx.mon-1];
+  // dasar perhitungan
+  const basis = !hasDaily ? 'Data harian tabungan belum ada: unggah file Template Trend Line agar pola hari, garis bulan lalu, dan kisaran bisa dihitung.'
+    : `Dasar 8 minggu terakhir (${pjLbl(sttAll.from)} – ${pjLbl(sttAll.to)}), ${scope}: hari kerja rata-rata ${pjR(sttAll.wd.avg)}, Sabtu–Minggu rata-rata ${pjR(sttAll.we.avg)}.`
+      + (S.pj.method==='bulanlalu' ? ` Metode "Ikuti bulan lalu" memakai perubahan harian ${mPrev} pada tanggal yang sama; hari terakhir ${mCur} ikut menampung sisa hari sampai akhir ${mPrev}.` : '');
+  $('#pjBasis').textContent = basis;
+  // ringkasan bulan lalu pada periode yang sama
+  let prevChg = null;
+  if (serAll){ const a = serAll.map.get(pjIso(ctx.py, ctx.pm, Math.min(ctx.day, ctx.pLast))), z = serAll.map.get(pjIso(ctx.py, ctx.pm, ctx.pLast)); if (a!=null && z!=null) prevChg = z - a; }
+  const tagNeed = (need) => run.avgRate >= need ? '<span class="tag ok">Proyeksi cukup</span>' : '<span class="tag bad">Perlu dorongan</span>';
+  const needTxt = (need, target) => need <= 0 ? `Sudah di atas target; boleh turun sampai ${esc(fmtRate(Math.abs(Math.round(need*10)/10)))}/hari` : `Butuh <b>${esc(pjR(need))}</b> selama ${ctx.left} hari`;
+  $('#pjKpi').innerHTML = `
+    <div class="kpi" style="border-top:3px solid ${PJ_C.proj}"><div class="lbl"><span>Proyeksi tabungan ${esc(ctx.last+' '+mCur)}</span><span class="tag ${run.proj>=run.rka?'ok':'bad'}">${fmtPct(run.proj/run.rka)} RKA</span></div>
+      <div class="val">Rp ${esc(pjM(run.proj))}</div>
+      <div class="d"><span>Dari posisi ${esc(D.meta.shortAsOf)}: <b class="${cls(run.proj-run.n19)}">${esc(pjMs(run.proj-run.n19))}</b></span><span>Selisih vs RKA <b class="${cls(run.proj-run.rka)}">${esc(pjMs(run.proj-run.rka))}</b></span></div></div>
+    <div class="kpi" style="border-top:3px solid ${PJ_C.band}"><div class="lbl"><span>Kisaran wajar (80%)</span></div>
+      <div class="val" style="font-size:22px">${run.sdEnd>0 ? esc(nfmt(run.lo,0)+' – '+nfmt(run.hi,0)+' M') : '–'}</div>
+      <div class="d"><span>${run.sdEnd>0 ? `Peluang ≥ RKA sekitar <b>${esc(nfmt(Math.round(run.pAbove*100),0))}%</b>` : 'Butuh data harian'}</span><span>Dari naik-turun harian 8 minggu terakhir</span></div></div>
+    <div class="kpi" style="border-top:3px solid ${PJ_C.rka}"><div class="lbl"><span>Kebutuhan arus ke RKA</span>${run.needRka<=0?'<span class="tag ok">Aman</span>':tagNeed(run.needRka)}</div>
+      <div class="val" style="font-size:22px">${esc(pjR(run.needRka))}</div>
+      <div class="d"><span>${needTxt(run.needRka)}</span><span>RKA ${esc(pjM(run.rka))} · proyeksi rata-rata ${esc(pjR(run.avgRate))}</span></div></div>
+    <div class="kpi" style="border-top:3px solid ${PJ_C.rk}"><div class="lbl"><span>Kebutuhan arus ke Rencana Kerja</span>${run.rk>0 ? (run.needRk<=0?'<span class="tag ok">Aman</span>':tagNeed(run.needRk)) : ''}</div>
+      <div class="val" style="font-size:22px">${run.rk>0 ? esc(pjR(run.needRk)) : '–'}</div>
+      <div class="d"><span>${run.rk>0 ? needTxt(run.needRk) : 'Rencana Kerja tidak ada di file'}</span><span>Rencana Kerja ${esc(pjM(run.rk))} (sheet TAB NWS)</span></div></div>
+    <div class="kpi" style="border-top:3px solid ${PJ_C.prev}"><div class="lbl"><span>Periode sama bulan lalu</span></div>
+      <div class="val" style="font-size:22px">${prevChg==null ? '–' : esc(pjMs(prevChg))}</div>
+      <div class="d"><span>${esc(Math.min(ctx.day,ctx.pLast)+' – '+ctx.pLast+' '+mPrev)}: perubahan tabungan ${esc(scope)}</span><span>${prevChg==null ? 'Data bulan lalu belum ada' : `Bila terulang: ${esc(pjM(run.n19+prevChg))}`}</span></div></div>`;
+  mount($('#chPj'), (w,h) => pjChart(w, h, ctx, run, scope), 380);
+  legend($('#legPj'), [{name:`Aktual ${mCur}`, color:PJ_C.act}, {name:'Proyeksi', color:PJ_C.proj}, {name:'Kisaran 80%', color:PJ_C.band},
+    {name:`${mPrev} (tanggal sama)`, color:PJ_C.prev}, {name:'RKA', color:PJ_C.rka}, {name:'Rencana Kerja', color:PJ_C.rk}, {name:'Sabtu & Minggu', color:TR_WE}]);
+  // tabel harian
+  const dayRows = run.path.map(p => { const pIso = p.d<=ctx.pLast ? pjIso(ctx.py, ctx.pm, p.d) : null, pv = pIso && run.ser ? run.ser.map.get(pIso) : null;
+    return {iso:p.iso, d:p.d, g:trDow(p.iso), c:p.c, v:p.v, lo:p.lo, hi:p.hi, pv:pv==null?null:pv, pIso}; });
+  const dayCols = [
+    {h:'Tanggal', l:true, v:r=>r.iso, f:r=>`<b style="color:${trWeekend(r.iso)?TR_WE:'inherit'}">${esc(HARI[r.g])}</b>, ${esc(pjLbl(r.iso))}`, t:r=>`${HARI[r.g]}, ${pjLbl(r.iso)}`},
+    {h:'Arus harian', v:r=>r.c, f:r=>`<span class="${cls(r.c)}">${esc(trFmt(r.c,true))}</span>`, t:r=>nfmt(r.c,1)},
+    {h:'Proyeksi posisi', v:r=>r.v, f:r=>`<b>${esc(trFmt(r.v))}</b>`, t:r=>nfmt(r.v,1)},
+    {h:'Kisaran 80%', v:r=>r.lo, f:r=>run.sdEnd>0 ? esc(nfmt(r.lo,0)+' – '+nfmt(r.hi,0)) : '–', t:r=>`${nfmt(r.lo,0)}-${nfmt(r.hi,0)}`},
+    {h:`${mPrev} (tgl sama)`, v:r=>r.pv, f:r=>r.pv==null ? '–' : `${esc(trFmt(r.pv))} <span class="muted">${esc(HARI_S[trDow(r.pIso)])}</span>`, t:r=>r.pv==null?'':nfmt(r.pv,1)},
+    {h:`Selisih vs ${mPrev}`, v:r=>r.pv==null?null:r.v-r.pv, f:r=>r.pv==null ? '–' : `<span class="${cls(r.v-r.pv)}">${esc(trFmt(r.v-r.pv,true))}</span>`, t:r=>r.pv==null?'':nfmt(r.v-r.pv,1)},
   ];
-  // path chart for total
-  const labels = [D.meta.eomShort, D.meta.shortPrev, D.meta.shortAsOf], okt = sumOf(L,'okt','dpk'), n18 = sumOf(L,'n18','dpk'), n19 = tot.n19;
-  const actual = [okt, n18, n19], dailyTot = tot.rate*1000;
-  for (let k=1;k<=days;k++) labels.push(String(D.meta.daysElapsed+k));
-  const actualS = labels.map((_,i) => i<3 ? actual[i] : null);
-  const projS = labels.map((_,i) => i<2 ? null : n19 + dailyTot*(i-2));
-  const rkaS = labels.map(() => tot.rka);
-  const series = [
-    {name:'Aktual', color:'#0f2747', values: actualS},
-    {name:'Proyeksi', color:'#0754bf', values: projS, dash:true},
-    {name:`RKA ${D.meta.monthName}`, color:'#c8402f', values: rkaS, dash:true, width:1.8},
+  $('#tblPjDay').innerHTML = dayRows.length ? table('pjDay', dayCols, dayRows, {c:0, d:1}) : '<div class="empty">Posisi sudah di akhir bulan.</div>';
+  // per wilayah & kanca
+  const share = k => run.n19 ? (getV(k,'n19','tab')/1000)/run.n19 : 0;
+  const unitRow = (name, area, list, sh) => { const u = pjRun(S.pj.method, list, ctx, S.pj.custom, sh);
+    return {name, area, n19:u.n19, proj:u.proj, rka:u.rka, ach:u.rka?u.proj/u.rka:null, gap:u.proj-u.rka, need:u.needRka, rk:u.rk, gapRk:u.rk?u.proj-u.rk:null}; };
+  const unitCols = (first) => [
+    first,
+    {h:`Posisi ${D.meta.shortAsOf}`, v:r=>r.n19, f:r=>esc(pjM(r.n19)), t:r=>nfmt(r.n19,1)},
+    {h:'Proyeksi akhir bulan', v:r=>r.proj, f:r=>`<b>${esc(pjM(r.proj))}</b>`, t:r=>nfmt(r.proj,1)},
+    {h:'RKA', v:r=>r.rka, f:r=>esc(pjM(r.rka)), t:r=>nfmt(r.rka,1)},
+    {h:'% RKA', v:r=>r.ach, f:r=>r.ach==null?'–':`<span class="tag ${r.ach>=1?'ok':'bad'}">${fmtPct(r.ach)}</span>`, t:r=>r.ach==null?'':fmtPct(r.ach)},
+    {h:'Selisih vs RKA', v:r=>r.gap, f:r=>`<span class="${cls(r.gap)}">${esc(pjMs(r.gap))}</span>`, t:r=>nfmt(r.gap,1)},
+    {h:'Butuh/hari ke RKA', v:r=>r.need, f:r=>r.need<=0 ? '<span class="muted">aman</span>' : `<b>${esc(pjR(r.need))}</b>`, t:r=>nfmt(r.need,1)},
+    {h:'Selisih vs Rencana Kerja', v:r=>r.gapRk, f:r=>r.gapRk==null?'–':`<span class="${cls(r.gapRk)}">${esc(pjMs(r.gapRk))}</span>`, t:r=>r.gapRk==null?'':nfmt(r.gapRk,1)},
   ];
-  $('#projOut').innerHTML = `
-    <div class="kpis" style="margin-top:14px">
-      <div class="kpi" style="border-top:3px solid var(--navy)"><div class="lbl"><span>Proyeksi DPK akhir bulan</span><span class="tag ${tot.ach>=1?'ok':'bad'}">${fmtPct(tot.ach)} RKA</span></div><div class="val">Rp ${esc(fmtM(tot.proj))}</div><div class="d"><span>Selisih vs RKA <b class="${cls(tot.gap)}">${esc(fmtM(tot.gap,{sign:true}))}</b></span><span>Arus total <b class="${cls(tot.rate)}">${esc(fmtRate(tot.rate,true))} M/hr</b></span></div></div>
-      <div class="kpi" style="border-top:3px solid var(--blue)"><div class="lbl"><span>Perubahan ke akhir bulan</span></div><div class="val">${esc(fmtM(tot.proj-tot.n19,{sign:true}))}</div><div class="d"><span>${days} hari tersisa</span><span>Posisi terbaru ${esc(fmtM(tot.n19))}</span></div></div>
-      <div class="kpi" style="border-top:3px solid var(--orange)"><div class="lbl"><span>Rencana Kerja akhir bulan</span></div><div class="val">Rp ${esc(fmtM(L.reduce((a,k)=>a+(k.tabNws.proj30||0),0)))}</div><div class="d"><span>Referensi Tabungan NWS (sheet TAB NWS), bukan proyeksi</span></div></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">
-      <div class="panel" style="--c:var(--navy)"><h3>Jalur DPK total</h3><div class="desc">Aktual sampai posisi terbaru, lalu proyeksi linear sampai akhir bulan, dibandingkan RKA bulan ini.</div><div class="chart" id="chProj"></div><div class="legend" id="legProj"></div></div>
-      <div class="panel" style="--c:var(--blue)"><h3>Proyeksi per produk</h3><div class="desc">Posisi terbaru, arus harian, dan proyeksi akhir bulan.</div><div id="tblProj"></div></div>
-    </div>`;
-  mount($('#chProj'), (w,h) => lineChart(w, h, labels, series, {fmt: v => fmtM(v,{unit:false}), aria:'Jalur proyeksi DPK'}), 290);
-  legend($('#legProj'), [{name:'Aktual',color:'#0f2747'},{name:'Proyeksi',color:'#0754bf',dash:true},{name:'RKA bulan ini',color:'#c8402f',dash:true}]);
-  $('#tblProj').innerHTML = table('proj', cols, all, {c:0,d:1});
+  const areaWrap = $('#pjAreaWrap'); areaWrap.hidden = S.area!=='all';
+  if (S.area==='all'){
+    const aRows = AREAS.map(a => { const list = D.kanca.filter(k => k.area===a); return unitRow(a, a, list, list.reduce((s,k) => s+share(k), 0)); });
+    $('#tblPjArea').innerHTML = table('pjArea', unitCols({h:'Wilayah', l:true, v:r=>r.name, f:r=>`<span class="dot" style="background:${AREA_COLOR[r.name]||'#6b7b93'}"></span>${esc(r.name)}`, t:r=>r.name}), aRows, {c:5, d:1});
+  }
+  const kRows = L.map(k => unitRow(k.name, k.area, [k], share(k)));
+  const below = kRows.filter(r => r.gap < 0).length;
+  $('#pjKancaDesc').textContent = `${kRows.length} kanca di ${scope}; ${below ? below + ' kanca diproyeksikan di bawah RKA' : 'semua kanca diproyeksikan mencapai RKA'}. Urut dari selisih terkecil; klik judul kolom untuk mengurutkan.`;
+  $('#tblPjKanca').innerHTML = table('pjKanca', unitCols({h:'Kanca', l:true, v:r=>r.name, f:r=>`${esc(r.name)} <span class="muted">${esc(r.area.replace('Area Head ','AH '))}</span>`, t:r=>r.name}), kRows, {c:5, d:1});
 };
+RENDER_TBL.pjDay = () => TAB_RENDER.proyeksi();
+RENDER_TBL.pjArea = () => TAB_RENDER.proyeksi();
+RENDER_TBL.pjKanca = () => TAB_RENDER.proyeksi();
 function fmtRate(v, signed){ if (v==null) return '0'; const s = (signed && v>0?'+':v<0?'−':''); return s + nfmt(Math.abs(v),1) + ' M'; }
 
 /* ===================== LOADER: baca file .xlsx langsung di browser (tanpa library) ===================== */
@@ -1456,8 +1654,7 @@ function applyData(nd, src, tagCls){
   setNoData(false);
   setLabels(D.meta);
   DAYS_ELAPSED = D.meta.daysElapsed; DAYS_YTD = D.meta.daysYTD;
-  S.proj = {preset:'mtd', giro:null, tab:null, dep:null};
-  const rd = $('#rDays'); rd.max = String(D.meta.daysLeft); rd.value = String(D.meta.daysLeft);
+  S.pj = {method:'pola', custom:null};
   $('#eyebrow').textContent = `Retail Funding · Dashboard DPK · Posisi ${D.meta.asOf}`;
   $('#lede').textContent = `Kinerja harian tabungan, giro, dan deposito dibandingkan dengan posisi bulan lalu, hari sebelumnya, awal tahun, dan RKA bulan ini. Posisi ${D.meta.asOf}.`;
   $('#foot').textContent = `Sumber: ${src}. Angka dihitung ulang dari file sumber setiap kali file diunggah.`;
@@ -1978,18 +2175,10 @@ function bind(){
     S.kProd = b.dataset.kp; $$('#kProdToggle button').forEach(x => x.setAttribute('aria-pressed', String(x===b))); renderKancaTable(); });
   $('#segToggle').addEventListener('click', e => { const b = e.target.closest('[data-seg]'); if (b){ S.seg = b.dataset.seg; renderActive(); } });
   $('#perToggle').addEventListener('click', e => { const b = e.target.closest('[data-per]'); if (b){ S.per = b.dataset.per; renderActive(); } });
-  ['rGiro','rTab','rDep','rDays'].forEach(id => $('#'+id).addEventListener('input', e => {
-    const map = {rGiro:'giro', rTab:'tab', rDep:'dep'};
-    if (map[id]) { S.proj[map[id]] = Number(e.target.value); S.proj.preset='custom'; }
-    else S.proj.days = Number(e.target.value);
-    $$('[data-preset]').forEach(b => b.classList.remove('on'));
-    TAB_RENDER.proyeksi();
-  }));
-  $$('[data-preset]').forEach(b => b.addEventListener('click', () => {
-    const name = b.dataset.preset;
-    S.proj.preset = name; applyRates(presetRates(name));
-    TAB_RENDER.proyeksi();
-  }));
+  $('#pjMethods').addEventListener('click', e => { const b = e.target.closest('[data-pjm]'); if (!b || b.disabled) return;
+    initProj(); S.pj.method = b.dataset.pjm; S.pj.custom = null; S.pj.fallbackFrom = null; TAB_RENDER.proyeksi(); });
+  ['pjWd','pjWe'].forEach(id => $('#'+id).addEventListener('input', () => {
+    initProj(); S.pj.custom = {wd:Number($('#pjWd').value), we:Number($('#pjWe').value)}; S.pj.method = 'custom'; TAB_RENDER.proyeksi(); }));
   document.addEventListener('click', e => {
     const s = e.target.closest('[data-sort]');
     if (s){ const [id, i] = s.dataset.sort.split('|'); setSort(id, Number(i)); return; }
@@ -2020,7 +2209,6 @@ function bind(){
   }, {passive:true});
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderActive, 160); });
 }
-function resetProjIfScope(){ if (CURRENT==='proyeksi' || true){ S.proj.giro=null; initProj(); } }
 
 /* table re-renders for sorting (after all renderers exist) */
 RENDER_TBL.kanca = () => renderKancaTable();
