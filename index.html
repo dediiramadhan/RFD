@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="id">
 <head>
-<meta name="robots" content="noindex, nofollow, noai, noimageai" />
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow, noai, noimageai" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>Dashboard DPK Non Wholesale</title>
@@ -152,6 +152,7 @@ input[type=range]{width:100%;accent-color:var(--blue)}
 .tr-chips button{appearance:none;border:1.5px solid var(--c,var(--blue));background:#fff;color:var(--c,var(--blue));font:inherit;font-weight:600;font-size:12.5px;border-radius:999px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .tr-chips button[aria-pressed="true"]{background:var(--c,var(--blue));color:#fff}
 .tr-chips button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.tr-chips-act{display:flex;flex-wrap:wrap;gap:8px;width:100%;padding-bottom:8px;margin-bottom:2px;border-bottom:1px dashed #d5e0ef}
 .tbl svg{display:block}
 .drop[hidden],.btn[hidden]{display:none !important}
 header{position:relative}
@@ -467,7 +468,7 @@ if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.u
       <div class="kpis" id="kpiTren" style="margin-top:14px"></div>
       <div class="panel" style="--c:var(--navy);margin-top:14px">
         <h3>Tren tabungan harian: ringkasan</h3>
-        <div class="desc">Satuan M (miliar). Garis: posisi harian. Batang: perubahan harian seri pertama yang dipilih (hijau naik, oranye turun). Kolom merah muda dan hari berwarna merah: Sabtu dan Minggu. Arahkan kursor ke grafik untuk hari, tanggal, dan nilainya.</div>
+        <div class="desc">Satuan M (miliar). Garis: posisi harian. Batang: perubahan harian (hijau naik, oranye turun); bila Total dipilih memakai Total, bila tidak menjumlahkan Ritel dan Mikro yang dipilih. Kolom merah muda dan hari berwarna merah: Sabtu dan Minggu. Arahkan kursor ke grafik untuk hari, tanggal, dan nilainya.</div>
         <div class="tr-chips" id="trSerChips"></div>
         <div id="chTrenTot"></div>
         <div class="legend" id="lgTrenTot"></div>
@@ -482,7 +483,7 @@ if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.u
     <div data-trpanel="ah" hidden>
       <div class="panel" style="--c:var(--cyan);margin-top:14px">
         <h3>Tren tabungan harian per wilayah (Area Head)</h3>
-        <div class="desc">Jumlah seluruh BO dalam setiap wilayah. Klik wilayah untuk menyembunyikan garisnya. Batang perubahan harian mengikuti wilayah pertama yang dipilih; kolom merah muda menandai Sabtu dan Minggu.</div>
+        <div class="desc">Jumlah seluruh BO dalam setiap wilayah. Klik wilayah untuk menyembunyikan garisnya. Batang perubahan harian adalah jumlah perubahan semua wilayah yang dipilih; kolom merah muda menandai Sabtu dan Minggu.</div>
         <div class="tr-chips" id="trAhChips"></div>
         <div id="chTrenAh"></div>
         <div class="legend" id="lgTrenAh"></div>
@@ -497,7 +498,7 @@ if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.u
     <div data-trpanel="bo" hidden>
       <div class="panel" style="--c:var(--orange);margin-top:14px">
         <h3>Tren tabungan harian per BO (kanca)</h3>
-        <div class="desc">Lima BO dengan posisi tertinggi ditampilkan lebih dulu. Klik nama BO untuk menambah atau menghapus garisnya. Batang perubahan harian mengikuti BO pertama yang dipilih; kolom merah muda menandai Sabtu dan Minggu.</div>
+        <div class="desc">Lima BO dengan posisi tertinggi ditampilkan lebih dulu. Klik nama BO untuk menambah atau menghapus garisnya. Batang perubahan harian adalah jumlah perubahan semua BO yang dipilih. Tombol "Pilih AH" memilih semua BO di wilayah tersebut; kolom merah muda menandai Sabtu dan Minggu.</div>
         <div class="tr-chips" id="trBoChips"></div>
         <div id="chTrenBo"></div>
         <div class="legend" id="lgTrenBo"></div>
@@ -1694,11 +1695,13 @@ const HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 const HARI_S = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 const trDow = iso => { const [y,m,d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m-1, d)).getUTCDay(); };
 const trWeekend = iso => { const g = trDow(iso); return g===0 || g===6; };
-const TR_UP = '#0f8b5f', TR_DOWN = '#e97132', TR_WE = '#c8402f', TR_WE_BG = '#fdeaea';
+const TR_UP = '#2f9e44', TR_DOWN = '#ff1744', TR_WE = '#c8402f', TR_WE_BG = '#fdeaea';
 function trPathOf(v, x, y){ let d='', pen=false; v.forEach((q,i) => { if (q==null){ pen=false; return; } d += (pen?'L':'M') + x(i).toFixed(1) + ' ' + y(q).toFixed(1) + ' '; pen=true; }); return d; }
 
-// series: [{name, color, v}] dengan v sepanjang TR.dates. Batang perubahan harian memakai seri pertama.
-function trChartDaily(w, h, series){
+// series: [{name, color, v}] dengan v sepanjang TR.dates.
+// Batang = jumlah perubahan harian semua seri di barSeries (bawaan: semua seri yang tampil).
+// unit: sebutan kategori untuk judul ringkas, mis. 'AH' atau 'BO'.
+function trChartDaily(w, h, series, barSeries, unit){
   const range = S.trRange==null ? 30 : S.trRange;
   const N = TR.dates.length, i0 = range ? Math.max(0, N - range) : 0;
   const dates = TR.dates.slice(i0), n = dates.length;
@@ -1728,12 +1731,19 @@ function trChartDaily(w, h, series){
     let L = -1; for (let i=n-1;i>=0;i--) if (se.v[i]!=null){ L=i; break; }
     if (L>=0 && !daily) s += `<circle cx="${x(L).toFixed(1)}" cy="${y(se.v[L]).toFixed(1)}" r="3.5" fill="#fff" stroke="${se.color}" stroke-width="2"/>`;
   });
-  // batang perubahan harian (seri pertama)
-  const p = sers[0];
-  const dv = p.v.map((v,i) => { const pv = i>0 ? p.v[i-1] : p.prev; return (v!=null && pv!=null) ? v - pv : null; });
+  // batang perubahan harian: jumlah perubahan seluruh kategori yang dipilih
+  const bs = (barSeries && barSeries.length ? barSeries : series).map(se => ({name: se.name, v: se.v.slice(i0), prev: i0>0 ? se.v[i0-1] : null}));
+  const parts = bs.map(se => se.v.map((v,i) => { const pv = i>0 ? se.v[i-1] : se.prev; return (v!=null && pv!=null) ? v - pv : null; }));
+  const dv = dates.map((_,i) => { let sum = 0, any = false; parts.forEach(pp => { if (pp[i]!=null){ sum += pp[i]; any = true; } }); return any ? sum : null; });
+  const miss = dates.map((_,i) => bs.filter((_,k) => parts[k][i]==null && dv[i]!=null).map(se => se.name));
+  const barName = bs.length===1 ? bs[0].name
+    : bs.length<=3 ? 'gabungan ' + bs.map(se => se.name).join(' + ')
+    : `gabungan ${bs.length} ${unit || 'seri'}`;
+  const p = {name: barName};
   const dm = Math.max(1, ...dv.filter(v => v!=null).map(Math.abs));
   const z = barT + (barB-barT)/2, yd = v => z - v/dm*((barB-barT)/2 - 2);
-  s += `<text x="${l}" y="${barT-12}" font-size="11" font-weight="600" fill="#34496a">Perubahan harian ${esc(p.name)} (M)</text>`;
+  const lbl = `Perubahan harian ${p.name} (M)`, maxC = Math.max(20, Math.floor((w-l-r)/6.2));
+  s += `<text x="${l}" y="${barT-12}" font-size="11" font-weight="600" fill="#34496a">${esc(lbl.length>maxC ? lbl.slice(0,maxC-1)+'…' : lbl)}</text>`;
   s += `<line x1="${l}" x2="${w-r}" y1="${z}" y2="${z}" stroke="#9fb0c7"/>`;
   s += `<text x="${l-8}" y="${(yd(dm)+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#6b7b93">+${esc(nfmt(dm,0))}</text><text x="${l-8}" y="${(yd(-dm)+4).toFixed(1)}" text-anchor="end" font-size="10" fill="#6b7b93">−${esc(nfmt(dm,0))}</text>`;
   const bw = Math.max(1, Math.min(18, step*0.66));
@@ -1767,7 +1777,9 @@ function trChartDaily(w, h, series){
     const g = trDow(dates[i]), we = g===0 || g===6;
     const tip = `<b>${HARI[g]}, ${esc(trLbl(dates[i]))}</b>${we ? ' · akhir pekan' : ''}` +
       sers.map(se => se.v[i]==null ? '' : `<br>${esc(se.name)}: ${esc(trFmt(se.v[i]))}`).join('') +
-      (dv[i]==null ? '' : `<br>Perubahan ${esc(p.name)}: ${esc(trFmt(dv[i],true))}`);
+      (dv[i]==null ? '' : `<br><b>Perubahan ${esc(bs.length>1 ? 'gabungan' : p.name)}: ${esc(trFmt(dv[i],true))}</b>` +
+        (bs.length>1 ? bs.map((se,k) => parts[k][i]==null ? '' : `<br>· ${esc(se.name)}: ${esc(trFmt(parts[k][i],true))}`).filter(Boolean).slice(0,8).join('') + (bs.length>8 ? `<br>· … dan ${bs.length-8} lainnya` : '') : '') +
+        (miss[i].length ? `<br><i>(data ${esc(miss[i].slice(0,3).join(', '))}${miss[i].length>3 ? ` dan ${miss[i].length-3} lainnya` : ''} kosong)</i>` : ''));
     s += `<rect x="${(x(i)-step/2).toFixed(1)}" y="${t}" width="${Math.max(1,step).toFixed(2)}" height="${(barB-t).toFixed(1)}" fill="transparent" data-tip="${tip}"/>`;
   }
   return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="Tren tabungan dan perubahan harian">${s}</svg>`;
@@ -1825,8 +1837,8 @@ function renderSegRingkasan(){
   S.trSer = S.trSer || {ritel:false, mikro:false};   // awalnya hanya Total, agar pergerakan harian terlihat
   const keys = ['total','ritel','mikro'];
   $('#trSerChips').innerHTML = keys.map(k => `<button type="button" data-ser="${k}" aria-pressed="${trOn(S.trSer,k)}" style="--c:${TREND_SER[k].color}">${esc(TREND_SER[k].label)}</button>`).join('');
-  const sers = keys.filter(k => trOn(S.trSer,k)).map(k => ({name:TREND_SER[k].label, color:TREND_SER[k].color, v:TR[k]}));
-  mount($('#chTrenTot'), (w,h) => sers.length ? trChartDaily(w,h,sers) : `<div class="empty">Pilih minimal satu seri.</div>`, 400);
+  const sers = keys.filter(k => trOn(S.trSer,k)).map(k => ({key:k, name:TREND_SER[k].label, color:TREND_SER[k].color, v:TR[k]}));
+  mount($('#chTrenTot'), (w,h) => sers.length ? trChartDaily(w,h,sers, sers.some(x => x.key==='total') ? sers.filter(x => x.key==='total') : sers, 'seri') : `<div class="empty">Pilih minimal satu seri.</div>`, 400);
   trDailyLegend($('#lgTrenTot'), sers);
   const rows = keys.map(k => trRow(TREND_SER[k].label, '', TREND_SER[k].color, TR[k]));
   $('#tblTrenRingkasan').innerHTML = trTable('trRingkasan', rows) + trFootnote();
@@ -1835,7 +1847,7 @@ function renderSegAh(){
   S.trAh = S.trAh || {};
   $('#trAhChips').innerHTML = TR.ah.map(a => `<button type="button" data-ah="${esc(a.name)}" aria-pressed="${trOn(S.trAh,a.name)}" style="--c:${TR_AH_COLOR[a.name]||'#6b7b93'}">${esc(a.name)}</button>`).join('');
   const ahs = TR.ah.filter(a => trOn(S.trAh,a.name)).map(a => ({name:a.name, color:TR_AH_COLOR[a.name]||'#6b7b93', v:a.v}));
-  mount($('#chTrenAh'), (w,h) => ahs.length ? trChartDaily(w,h,ahs) : `<div class="empty">Pilih minimal satu wilayah.</div>`, 400);
+  mount($('#chTrenAh'), (w,h) => ahs.length ? trChartDaily(w,h,ahs,ahs,'AH') : `<div class="empty">Pilih minimal satu wilayah.</div>`, 400);
   trDailyLegend($('#lgTrenAh'), ahs);
   const rows = TR.ah.map(a => trRow(a.name, '', TR_AH_COLOR[a.name]||'#6b7b93', a.v, {boCount: TR.bo.filter(b => b.area===a.name).length}));
   const extra = [{h:'Jumlah BO', v:r=>r.boCount, f:r=>esc(String(r.boCount)), t:r=>String(r.boCount)}];
@@ -1846,10 +1858,13 @@ function renderSegBo(){
     const top = [...TR.bo].sort((a,b) => (trStat(b.v).cur ?? -Infinity) - (trStat(a.v).cur ?? -Infinity)).slice(0,5);
     return Object.fromEntries(TR.bo.map(b => [b.name, top.includes(b)]));
   })();
-  $('#trBoChips').innerHTML = `<div class="tr-chips-act"><button type="button" data-boall="1">Pilih semua</button><button type="button" data-boall="0">Kosongkan</button></div>` +
+  const ahBtns = TR.ah.map(a => { const bos = TR.bo.filter(b => b.area===a.name);
+      const exact = bos.length && TR.bo.every(b => !!S.trBo[b.name] === (b.area===a.name));
+      return `<button type="button" data-boah="${esc(a.name)}" aria-pressed="${exact}" style="--c:${TR_AH_COLOR[a.name]||'#6b7b93'}">Pilih ${esc(a.name)} (${bos.length})</button>`; }).join('');
+  $('#trBoChips').innerHTML = `<div class="tr-chips-act">${ahBtns}<button type="button" data-boall="1">Pilih semua</button><button type="button" data-boall="0">Kosongkan</button></div>` +
     TR.bo.map(b => `<button type="button" data-bo="${esc(b.name)}" aria-pressed="${trOn(S.trBo,b.name) && !!S.trBo[b.name]}" style="--c:${TR_AH_COLOR[b.area]||'#6b7b93'}">${esc(b.name)}</button>`).join('');
   const sel = TR.bo.filter(b => S.trBo[b.name]).map(b => ({name:b.name, color:TR_AH_COLOR[b.area]||'#6b7b93', v:b.v}));
-  mount($('#chTrenBo'), (w,h) => sel.length ? trChartDaily(w,h,sel) : `<div class="empty">Pilih minimal satu BO.</div>`, 420);
+  mount($('#chTrenBo'), (w,h) => sel.length ? trChartDaily(w,h,sel,sel,'BO') : `<div class="empty">Pilih minimal satu BO.</div>`, 420);
   trDailyLegend($('#lgTrenBo'), sel);
   const rows = TR.bo.map(b => trRow(b.name, b.area, TR_AH_COLOR[b.area]||'#6b7b93', b.v, {area:b.area}));
   const extra = [{h:'Wilayah', l:true, v:r=>r.area, f:r=>`<span class="muted">${esc(r.area)}</span>`, t:r=>r.area}];
@@ -1904,6 +1919,7 @@ function bindTrend(){
   $('#trAhChips').addEventListener('click', e => { const b = e.target.closest('[data-ah]'); if (!b) return;
     S.trAh = S.trAh || {}; const k = b.dataset.ah; S.trAh[k] = !trOn(S.trAh,k); renderSegAh(); });
   $('#trBoChips').addEventListener('click', e => {
+    const ah = e.target.closest('[data-boah]'); if (ah){ S.trBo = Object.fromEntries(TR.bo.map(b => [b.name, b.area===ah.dataset.boah])); renderSegBo(); return; }
     const all = e.target.closest('[data-boall]'); if (all){ S.trBo = Object.fromEntries(TR.bo.map(b => [b.name, all.dataset.boall==='1'])); renderSegBo(); return; }
     const b = e.target.closest('[data-bo]'); if (!b) return;
     S.trBo = S.trBo || {}; S.trBo[b.dataset.bo] = !S.trBo[b.dataset.bo]; renderSegBo(); });
