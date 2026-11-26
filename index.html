@@ -188,6 +188,15 @@ html.no-data .filters,html.no-data .srcbadge{display:none}
 .pj-methods .pill[disabled]{opacity:.4;cursor:not-allowed}
 #pjCtl.off{opacity:.45}
 #pjAreaWrap[hidden]{display:none}
+.pj-adj-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:10px}
+.pj-adj-form label,.pj-adj-type{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink2)}
+.pj-adj-form select,.pj-adj-form input{font:inherit;font-size:16px;min-height:44px;padding:8px 10px;border:1px solid #c9d8ee;border-radius:10px;background:#fff;color:#0f2747;max-width:100%}
+.pj-adj-form input[type=number]{width:130px}
+.pj-adj-form .grow{flex:1 1 220px}
+.pj-adj-form .grow input{width:100%}
+.pj-adj-form .btn{min-height:44px}
+.pj-adj-type .seg button{min-height:41px}
+#pjAdjList td .btn{padding:4px 10px;min-height:32px}
 </style>
 <script data-app>
 /* ================= PENGATURAN SERVER DATA (untuk hosting sendiri) =================
@@ -557,6 +566,20 @@ if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.u
       <div class="slider" style="--c:#c8402f"><div class="top"><b>Arus Sabtu–Minggu</b><output id="pjWeOut">0</output></div><input type="range" id="pjWe" min="-100" max="100" step="0.5" value="0" aria-label="Arus tabungan akhir pekan, M per hari"><div class="hint">M per hari, setiap Sabtu dan Minggu yang tersisa</div></div>
     </div>
     <div class="hint" id="pjBasis" style="margin-top:8px"></div>
+    <div class="panel" style="--c:#2f9e44;margin-top:14px">
+      <h3>Penyesuaian manual: dana masuk dan keluar</h3>
+      <div class="desc">Masukkan rencana dana masuk atau keluar pada sisa hari bulan ini. Nominalnya ditambahkan ke proyeksi metode di atas mulai tanggal tersebut. Pilih kanca agar ikut dihitung di tabel per wilayah dan kanca. Daftar ini tersimpan di browser Anda saja.</div>
+      <form id="pjAdjForm" class="pj-adj-form" autocomplete="off">
+        <label>Tanggal<select id="pjAdjDate"></select></label>
+        <div class="pj-adj-type"><span>Jenis</span><div class="seg" role="group" aria-label="Jenis dana" id="pjAdjType"><button type="button" data-t="in" aria-pressed="true">Dana masuk</button><button type="button" data-t="out" aria-pressed="false">Dana keluar</button></div></div>
+        <label>Nominal (M)<input id="pjAdjAmt" type="number" inputmode="decimal" min="0" step="0.1" placeholder="mis. 150"></label>
+        <label>Kanca (opsional)<select id="pjAdjKanca"></select></label>
+        <label class="grow">Keterangan (opsional)<input id="pjAdjNote" type="text" maxlength="80" placeholder="mis. Penempatan dana nasabah prioritas"></label>
+        <button class="btn" type="submit">Tambah</button>
+      </form>
+      <div class="hint" id="pjAdjMsg" aria-live="polite" style="margin-top:6px"></div>
+      <div id="pjAdjList"></div>
+    </div>
     <div id="projOut">
       <div class="kpis" id="pjKpi" style="margin-top:14px"></div>
       <div class="panel" style="--c:var(--navy);margin-top:14px">
@@ -1155,9 +1178,28 @@ const PJ_METHODS = [
   {k:'pola', label:'Pola hari kerja & akhir pekan', daily:true},
   {k:'bulanlalu', label:'Ikuti bulan lalu', daily:true},
   {k:'mtd', label:'Rata-rata MTD', daily:false},
-  {k:'avg7', label:'Rata-rata 7 hari', daily:true},
-  {k:'nol', label:'Arus nol', daily:false},
 ];
+/* ---- Penyesuaian manual: dana masuk / keluar pada sisa hari bulan ini (tersimpan di browser ini) ---- */
+const PJ_ADJ_KEY = 'dpk-pj-adj-v1';
+const pjAdjOk = a => a && typeof a==='object' && /^\d{4}-\d{2}-\d{2}$/.test(String(a.iso)) && (a.type==='in' || a.type==='out') && isFinite(a.amt) && a.amt>0;
+function pjAdjLoad(){
+  if (Array.isArray(S.pjAdj)) return;
+  try { const j = JSON.parse(localStorage.getItem(PJ_ADJ_KEY) || '[]'); S.pjAdj = Array.isArray(j) ? j.filter(pjAdjOk).map(a => ({id:String(a.id||Math.random()), iso:a.iso, type:a.type, amt:Number(a.amt), kanca:String(a.kanca||''), note:String(a.note||'').slice(0,80)})) : []; }
+  catch (e){ S.pjAdj = []; }
+}
+function pjAdjSave(){ try { localStorage.setItem(PJ_ADJ_KEY, JSON.stringify(S.pjAdj)); } catch (e){} }
+const pjAdjInRange = (a, ctx) => a.iso > ctx.asIso && a.iso <= pjIso(ctx.y, ctx.mon, ctx.last);
+// Peta tanggal -> {net, items}. Penyesuaian berkanca dihitung bila kancanya ada di cakupan; tanpa kanca hanya di total semua wilayah.
+function pjAdjMap(ctx, names, includeGeneric){
+  const m = new Map();
+  for (const a of (S.pjAdj || [])){
+    if (!pjAdjInRange(a, ctx)) continue;
+    if (a.kanca ? !names.has(a.kanca) : !includeGeneric) continue;
+    const d = Number(a.iso.slice(8)), e = m.get(d) || {net:0, items:[]};
+    e.net += a.type==='in' ? a.amt : -a.amt; e.items.push(a); m.set(d, e);
+  }
+  return m;
+}
 const PJ_WINDOW = 56;          // 8 minggu terakhir untuk pola hari & kisaran
 const PJ_Z = 1.2816;           // kisaran 80%
 const PJ_C = {act:'#0f2747', proj:'#0754bf', band:'#cfe0f7', prev:'#8a9bb4', rka:'#c8402f', rk:'#e97132'};
@@ -1219,11 +1261,11 @@ function pjRateFn(method, list, ser, stt, ctx, custom, share){
   if (method==='mtd'){ const r = (sumOf(list,'n19','tab') - sumOf(list,'okt','tab'))/1000/Math.max(1, D.meta.daysElapsed); return () => r; }
   if (method==='nol' || !stt) return () => 0;
   if (method==='pola') return d => trWeekend(pjIso(ctx.y, ctx.mon, d)) ? stt.we.avg : stt.wd.avg;
-  if (method==='avg7') return () => stt.last7.avg;
   if (method==='bulanlalu') return d => pjPrevChange(ser, ctx, d);
   return () => 0;
 }
-function pjRun(method, list, ctx, custom, share){
+function pjRun(method, list, ctx, custom, share, adj){
+  adj = adj || new Map();
   const ser = pjSeries(list), stt = pjStats(ser, ctx);
   const n19 = sumOf(list,'n19','tab')/1000, rka = sumOf(list,'rka','tab')/1000;
   const rk = list.reduce((a,k) => a + ((k.tabNws && k.tabNws.proj30) || 0), 0)/1000;
@@ -1231,10 +1273,14 @@ function pjRun(method, list, ctx, custom, share){
   const sdOf = d => !stt ? 0 : (method==='pola' || method==='custom' || method==='bulanlalu')
     ? (trWeekend(pjIso(ctx.y, ctx.mon, d)) ? stt.we.sd : stt.wd.sd) : stt.all.sd;
   const path = []; let p = n19, vr = 0;
-  for (let d=ctx.day+1; d<=ctx.last; d++){ const c = fn(d); p += c; vr += sdOf(d)**2; path.push({d, iso:pjIso(ctx.y, ctx.mon, d), c, v:p, lo:p - PJ_Z*Math.sqrt(vr), hi:p + PJ_Z*Math.sqrt(vr)}); }
+  let adjTot = 0;
+  for (let d=ctx.day+1; d<=ctx.last; d++){
+    const base = fn(d), a = adj.get(d), net = a ? a.net : 0, c = base + net; p += c; adjTot += net; vr += sdOf(d)**2;
+    path.push({d, iso:pjIso(ctx.y, ctx.mon, d), base, adj:net, adjItems:a ? a.items : [], c, v:p, lo:p - PJ_Z*Math.sqrt(vr), hi:p + PJ_Z*Math.sqrt(vr)});
+  }
   const end = path.length ? path[path.length-1] : {v:n19, lo:n19, hi:n19};
   const sdEnd = Math.sqrt(vr);
-  return {ser, stt, n19, rka, rk, path, proj:end.v, lo:end.lo, hi:end.hi, sdEnd,
+  return {ser, stt, n19, rka, rk, path, adjTot, proj:end.v, lo:end.lo, hi:end.hi, sdEnd,
     pAbove: sdEnd>0 ? 1 - pjCdf((rka - end.v)/sdEnd) : (end.v>=rka ? 1 : 0),
     needRka: ctx.left ? (rka - n19)/ctx.left : 0, needRk: ctx.left ? (rk - n19)/ctx.left : 0,
     avgRate: ctx.left ? (end.v - n19)/ctx.left : 0};
@@ -1243,11 +1289,10 @@ function pjDefaults(list, ctx){
   const ser = pjSeries(list), stt = pjStats(ser, ctx);
   const m = S.pj.method;
   if (m==='pola' && stt) return {wd:stt.wd.avg, we:stt.we.avg};
-  if (m==='avg7' && stt) return {wd:stt.last7.avg, we:stt.last7.avg};
   if (m==='mtd'){ const r = (sumOf(list,'n19','tab') - sumOf(list,'okt','tab'))/1000/Math.max(1, D.meta.daysElapsed); return {wd:r, we:r}; }
   return {wd:0, we:0};
 }
-function initProj(){ if (!S.pj) S.pj = {method:'pola', custom:null}; }
+function initProj(){ if (!S.pj) S.pj = {method:'pola', custom:null}; if (S.pj.method==='avg7' || S.pj.method==='nol') S.pj.method = 'pola'; pjAdjLoad(); }
 function resetProjIfScope(){ if (!S.pj) return; S.pj.custom = null; if (S.pj.method==='custom') S.pj.method = 'pola'; }
 
 function pjChart(w, h, ctx, run, scopeLabel){
@@ -1284,6 +1329,9 @@ function pjChart(w, h, ctx, run, scopeLabel){
   if (run.path.length) s += `<path d="M${x(ctx.day).toFixed(1)} ${y(run.n19).toFixed(1)} ${run.path.map(p => 'L'+x(p.d).toFixed(1)+' '+y(p.v).toFixed(1)).join(' ')}" fill="none" stroke="${PJ_C.proj}" stroke-width="2.4" stroke-dasharray="6 4"/>`;
   run.path.forEach(p => { const we = trWeekend(p.iso);
     s += `<circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${we?3.6:3}" fill="${we?TR_WE:'#fff'}" stroke="${we?TR_WE:PJ_C.proj}" stroke-width="1.8"/>`; });
+  run.path.forEach(p => { if (!p.adj) return; const col = p.adj>0 ? TR_UP : TR_DOWN;
+    s += `<text x="${x(p.d).toFixed(1)}" y="${(y(p.v)+(p.adj>0?-11:19)).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="${col}" stroke="#fff" stroke-width="3.5" paint-order="stroke">${esc((p.adj>0?'+':'−')+nfmt(Math.abs(p.adj),0))}</text>`;
+    s += `<path d="M${(x(p.d)-5).toFixed(1)} ${b-1} L${(x(p.d)+5).toFixed(1)} ${b-1} L${x(p.d).toFixed(1)} ${b-9} Z" fill="${col}" ${p.adj<0?`transform="rotate(180 ${x(p.d).toFixed(1)} ${b-5})"`:''}/>`; });
   s += `<circle cx="${x(ctx.day).toFixed(1)}" cy="${y(run.n19).toFixed(1)}" r="4" fill="${PJ_C.act}"/>`;
   if (run.rka>0) s += hline(run.rka, PJ_C.rka, `RKA ${nfmt(run.rka,0)}`);
   if (run.rk>0) s += hline(run.rk, PJ_C.rk, `${w<520 ? 'RK' : 'Rencana Kerja'} ${nfmt(run.rk,0)}`);
@@ -1304,7 +1352,8 @@ function pjChart(w, h, ctx, run, scopeLabel){
     const iso = pjIso(ctx.y, ctx.mon, d), g = trDow(iso), pIso = d<=ctx.pLast ? pjIso(ctx.py, ctx.pm, d) : null;
     const pp = run.path.find(p => p.d===d);
     let tip = `<b>${HARI[g]}, ${esc(pjLbl(iso))}</b>${g===0||g===6 ? ' · akhir pekan' : ''}`;
-    if (pp) tip += `<br>Proyeksi: <b>${esc(trFmt(pp.v))}</b> (arus ${esc(trFmt(pp.c,true))})` + (run.sdEnd>0 ? `<br>Kisaran 80%: ${esc(nfmt(pp.lo,0))} – ${esc(nfmt(pp.hi,0))} M` : '');
+    if (pp) tip += `<br>Proyeksi: <b>${esc(trFmt(pp.v))}</b> (arus metode ${esc(trFmt(pp.base,true))}${pp.adj ? `, penyesuaian ${esc(trFmt(pp.adj,true))}` : ''})`
+      + pp.adjItems.map(a => `<br>· ${a.type==='in'?'Dana masuk':'Dana keluar'} ${esc(trFmt(a.type==='in'?a.amt:-a.amt,true))}${a.kanca ? ' · '+esc(a.kanca) : ''}${a.note ? ' · '+esc(a.note) : ''}`).join('') + (run.sdEnd>0 ? `<br>Kisaran 80%: ${esc(nfmt(pp.lo,0))} – ${esc(nfmt(pp.hi,0))} M` : '');
     else if (cur[d-1]!=null) tip += `<br>Aktual: <b>${esc(trFmt(cur[d-1]))}</b>`;
     if (pIso && prev[d-1]!=null){ const ref = pp ? pp.v : cur[d-1];
       tip += `<br>Bulan lalu (${HARI[trDow(pIso)]}, ${esc(pjLbl(pIso))}): ${esc(trFmt(prev[d-1]))}` + (ref!=null ? `<br>Selisih vs bulan lalu: ${esc(trFmt(ref-prev[d-1], true))}` : ''); }
@@ -1329,7 +1378,9 @@ TAB_RENDER.proyeksi = () => {
   [['pjWd', def.wd], ['pjWe', def.we]].forEach(([id, v]) => { const el = $('#'+id); el.min = String(-lim); el.max = String(lim); el.value = String(Math.round(v*2)/2); el.disabled = S.pj.method==='bulanlalu'; });
   $('#pjWdOut').textContent = pjR(def.wd); $('#pjWeOut').textContent = pjR(def.we);
   $('#pjCtl').classList.toggle('off', S.pj.method==='bulanlalu');
-  const run = pjRun(S.pj.method, L, ctx, S.pj.custom);
+  const scopeNames = new Set(L.map(k => k.name));
+  const run = pjRun(S.pj.method, L, ctx, S.pj.custom, null, pjAdjMap(ctx, scopeNames, S.area==='all'));
+  pjAdjRender(ctx);
   const scope = scopeName(), mPrev = MON_S[ctx.pm-1], mCur = MON_S[ctx.mon-1];
   // dasar perhitungan
   const basis = !hasDaily ? 'Data harian tabungan belum ada: unggah file Template Trend Line agar pola hari, garis bulan lalu, dan kisaran bisa dihitung.'
@@ -1344,7 +1395,7 @@ TAB_RENDER.proyeksi = () => {
   $('#pjKpi').innerHTML = `
     <div class="kpi" style="border-top:3px solid ${PJ_C.proj}"><div class="lbl"><span>Proyeksi tabungan ${esc(ctx.last+' '+mCur)}</span><span class="tag ${run.proj>=run.rka?'ok':'bad'}">${fmtPct(run.proj/run.rka)} RKA</span></div>
       <div class="val">Rp ${esc(pjM(run.proj))}</div>
-      <div class="d"><span>Dari posisi ${esc(D.meta.shortAsOf)}: <b class="${cls(run.proj-run.n19)}">${esc(pjMs(run.proj-run.n19))}</b></span><span>Selisih vs RKA <b class="${cls(run.proj-run.rka)}">${esc(pjMs(run.proj-run.rka))}</b></span></div></div>
+      <div class="d"><span>Dari posisi ${esc(D.meta.shortAsOf)}: <b class="${cls(run.proj-run.n19)}">${esc(pjMs(run.proj-run.n19))}</b></span><span>Selisih vs RKA <b class="${cls(run.proj-run.rka)}">${esc(pjMs(run.proj-run.rka))}</b></span>${run.adjTot ? `<span>Termasuk penyesuaian manual <b class="${cls(run.adjTot)}">${esc(pjMs(run.adjTot))}</b></span>` : ''}</div></div>
     <div class="kpi" style="border-top:3px solid ${PJ_C.band}"><div class="lbl"><span>Kisaran wajar (80%)</span></div>
       <div class="val" style="font-size:22px">${run.sdEnd>0 ? esc(nfmt(run.lo,0)+' – '+nfmt(run.hi,0)+' M') : '–'}</div>
       <div class="d"><span>${run.sdEnd>0 ? `Peluang ≥ RKA sekitar <b>${esc(nfmt(Math.round(run.pAbove*100),0))}%</b>` : 'Butuh data harian'}</span><span>Dari naik-turun harian 8 minggu terakhir</span></div></div>
@@ -1362,10 +1413,11 @@ TAB_RENDER.proyeksi = () => {
     {name:`${mPrev} (tanggal sama)`, color:PJ_C.prev}, {name:'RKA', color:PJ_C.rka}, {name:'Rencana Kerja', color:PJ_C.rk}, {name:'Sabtu & Minggu', color:TR_WE}]);
   // tabel harian
   const dayRows = run.path.map(p => { const pIso = p.d<=ctx.pLast ? pjIso(ctx.py, ctx.pm, p.d) : null, pv = pIso && run.ser ? run.ser.map.get(pIso) : null;
-    return {iso:p.iso, d:p.d, g:trDow(p.iso), c:p.c, v:p.v, lo:p.lo, hi:p.hi, pv:pv==null?null:pv, pIso}; });
+    return {iso:p.iso, d:p.d, g:trDow(p.iso), c:p.c, base:p.base, adj:p.adj, v:p.v, lo:p.lo, hi:p.hi, pv:pv==null?null:pv, pIso}; });
   const dayCols = [
     {h:'Tanggal', l:true, v:r=>r.iso, f:r=>`<b style="color:${trWeekend(r.iso)?TR_WE:'inherit'}">${esc(HARI[r.g])}</b>, ${esc(pjLbl(r.iso))}`, t:r=>`${HARI[r.g]}, ${pjLbl(r.iso)}`},
-    {h:'Arus harian', v:r=>r.c, f:r=>`<span class="${cls(r.c)}">${esc(trFmt(r.c,true))}</span>`, t:r=>nfmt(r.c,1)},
+    {h:'Arus metode', v:r=>r.base, f:r=>`<span class="${cls(r.base)}">${esc(trFmt(r.base,true))}</span>`, t:r=>nfmt(r.base,1)},
+    {h:'Penyesuaian', v:r=>r.adj, f:r=>r.adj ? `<b class="${cls(r.adj)}">${esc(trFmt(r.adj,true))}</b>` : '<span class="muted">–</span>', t:r=>nfmt(r.adj,1)},
     {h:'Proyeksi posisi', v:r=>r.v, f:r=>`<b>${esc(trFmt(r.v))}</b>`, t:r=>nfmt(r.v,1)},
     {h:'Kisaran 80%', v:r=>r.lo, f:r=>run.sdEnd>0 ? esc(nfmt(r.lo,0)+' – '+nfmt(r.hi,0)) : '–', t:r=>`${nfmt(r.lo,0)}-${nfmt(r.hi,0)}`},
     {h:`${mPrev} (tgl sama)`, v:r=>r.pv, f:r=>r.pv==null ? '–' : `${esc(trFmt(r.pv))} <span class="muted">${esc(HARI_S[trDow(r.pIso)])}</span>`, t:r=>r.pv==null?'':nfmt(r.pv,1)},
@@ -1374,7 +1426,7 @@ TAB_RENDER.proyeksi = () => {
   $('#tblPjDay').innerHTML = dayRows.length ? table('pjDay', dayCols, dayRows, {c:0, d:1}) : '<div class="empty">Posisi sudah di akhir bulan.</div>';
   // per wilayah & kanca
   const share = k => run.n19 ? (getV(k,'n19','tab')/1000)/run.n19 : 0;
-  const unitRow = (name, area, list, sh) => { const u = pjRun(S.pj.method, list, ctx, S.pj.custom, sh);
+  const unitRow = (name, area, list, sh) => { const u = pjRun(S.pj.method, list, ctx, S.pj.custom, sh, pjAdjMap(ctx, new Set(list.map(k => k.name)), false));
     return {name, area, n19:u.n19, proj:u.proj, rka:u.rka, ach:u.rka?u.proj/u.rka:null, gap:u.proj-u.rka, need:u.needRka, rk:u.rk, gapRk:u.rk?u.proj-u.rk:null}; };
   const unitCols = (first) => [
     first,
@@ -1393,13 +1445,70 @@ TAB_RENDER.proyeksi = () => {
   }
   const kRows = L.map(k => unitRow(k.name, k.area, [k], share(k)));
   const below = kRows.filter(r => r.gap < 0).length;
-  $('#pjKancaDesc').textContent = `${kRows.length} kanca di ${scope}; ${below ? below + ' kanca diproyeksikan di bawah RKA' : 'semua kanca diproyeksikan mencapai RKA'}. Urut dari selisih terkecil; klik judul kolom untuk mengurutkan.`;
+  const nGen = (S.pjAdj||[]).filter(a => !a.kanca && pjAdjInRange(a, ctx)).length;
+  $('#pjKancaDesc').textContent = `${kRows.length} kanca di ${scope}; ${below ? below + ' kanca diproyeksikan di bawah RKA' : 'semua kanca diproyeksikan mencapai RKA'}. Urut dari selisih terkecil; klik judul kolom untuk mengurutkan.`
+    + (nGen ? ` Penyesuaian tanpa kanca (${nGen}) hanya dihitung di total semua wilayah, tidak di tabel ini.` : '');
   $('#tblPjKanca').innerHTML = table('pjKanca', unitCols({h:'Kanca', l:true, v:r=>r.name, f:r=>`${esc(r.name)} <span class="muted">${esc(r.area.replace('Area Head ','AH '))}</span>`, t:r=>r.name}), kRows, {c:5, d:1});
 };
 RENDER_TBL.pjDay = () => TAB_RENDER.proyeksi();
 RENDER_TBL.pjArea = () => TAB_RENDER.proyeksi();
 RENDER_TBL.pjKanca = () => TAB_RENDER.proyeksi();
 function fmtRate(v, signed){ if (v==null) return '0'; const s = (signed && v>0?'+':v<0?'−':''); return s + nfmt(Math.abs(v),1) + ' M'; }
+
+function pjAdjRender(ctx){
+  const dates = []; for (let d=ctx.day+1; d<=ctx.last; d++) dates.push(pjIso(ctx.y, ctx.mon, d));
+  const sel = $('#pjAdjDate'), prevVal = sel.value;
+  const t = new Date(), today = `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`;
+  sel.innerHTML = dates.map(iso => `<option value="${iso}">${HARI[trDow(iso)]}, ${esc(pjLbl(iso))}</option>`).join('');
+  sel.value = dates.includes(prevVal) ? prevVal : (dates.includes(today) ? today : (dates[0] || ''));
+  const ks = $('#pjAdjKanca'), kv = ks.value;
+  ks.innerHTML = '<option value="">Tanpa kanca (total)</option>' + AREAS.map(a => `<optgroup label="${esc(a)}">` + D.kanca.filter(k => k.area===a).map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join('') + '</optgroup>').join('');
+  ks.value = D.kanca.some(k => k.name===kv) ? kv : '';
+  const off = !dates.length;
+  $$('#pjAdjForm input, #pjAdjForm select, #pjAdjForm button').forEach(el => { el.disabled = off; });
+  if (off) $('#pjAdjMsg').textContent = 'Posisi sudah di akhir bulan; tidak ada sisa hari untuk penyesuaian.';
+  const items = [...(S.pjAdj||[])].sort((a,b) => a.iso.localeCompare(b.iso));
+  if (!items.length){ $('#pjAdjList').innerHTML = '<div class="hint" style="margin-top:8px">Belum ada penyesuaian.</div>'; return; }
+  let tin = 0, tout = 0;
+  const rows = items.map(a => {
+    const ok = pjAdjInRange(a, ctx), kOk = !a.kanca || D.kanca.some(k => k.name===a.kanca);
+    const counted = ok && kOk && (a.kanca ? (S.area==='all' || D.kanca.some(k => k.name===a.kanca && k.area===S.area)) : S.area==='all');
+    if (ok && kOk){ if (a.type==='in') tin += a.amt; else tout += a.amt; }
+    const why = !ok ? 'di luar sisa hari, tidak dihitung' : !kOk ? 'kanca tidak ada di data' : !counted ? 'tidak termasuk wilayah terpilih' : '';
+    return `<tr${why ? ' style="opacity:.5"' : ''}><td class="l">${esc(HARI[trDow(a.iso)])}, ${esc(pjLbl(a.iso))}</td>
+      <td class="l"><span class="tag ${a.type==='in'?'ok':'bad'}">${a.type==='in'?'Dana masuk':'Dana keluar'}</span></td>
+      <td><b class="${a.type==='in'?'pos':'neg'}">${esc(trFmt(a.type==='in'?a.amt:-a.amt, true))}</b></td>
+      <td class="l">${esc(a.kanca || 'Tanpa kanca')}</td><td class="l">${esc(a.note || '')}${why ? ` <span class="muted">(${why})</span>` : ''}</td>
+      <td><button type="button" class="btn ghost" data-adjdel="${esc(a.id)}" aria-label="Hapus penyesuaian">Hapus</button></td></tr>`; }).join('');
+  $('#pjAdjList').innerHTML = `<div class="tbl" style="margin-top:10px"><table><thead><tr><th class="l">Tanggal</th><th class="l">Jenis</th><th>Nominal</th><th class="l">Kanca</th><th class="l">Keterangan</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="upl-status"><span class="hint">Total dihitung: masuk <b class="pos">${esc(trFmt(tin,true))}</b> · keluar <b class="neg">${esc(trFmt(-tout,true))}</b> · bersih <b class="${cls(tin-tout)}">${esc(trFmt(tin-tout,true))}</b></span>
+    <button type="button" class="btn ghost" id="pjAdjClear">${S.pjAdjClearArm ? 'Klik lagi untuk menghapus semua' : 'Hapus semua'}</button></div>`;
+}
+function pjBind(){
+  $('#pjAdjType').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (!b || b.disabled) return;
+    $$('#pjAdjType [data-t]').forEach(x => x.setAttribute('aria-pressed', String(x===b))); });
+  $('#pjAdjForm').addEventListener('submit', e => {
+    e.preventDefault(); initProj();
+    const msg = $('#pjAdjMsg'), iso = $('#pjAdjDate').value, amt = Math.round(Number(String($('#pjAdjAmt').value).replace(',', '.'))*10)/10;
+    const type = ($('#pjAdjType [aria-pressed="true"]') || {}).dataset?.t || 'in';
+    if (!iso){ msg.textContent = 'Pilih tanggal.'; return; }
+    if (!isFinite(amt) || amt<=0){ msg.textContent = 'Isi nominal lebih dari 0 (dalam M, miliar rupiah).'; $('#pjAdjAmt').focus(); return; }
+    if (amt > 100000){ msg.textContent = 'Nominal terlalu besar. Satuan yang dipakai adalah M (miliar rupiah).'; return; }
+    const a = {id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), iso, type, amt, kanca: $('#pjAdjKanca').value, note: $('#pjAdjNote').value.trim().slice(0,80)};
+    S.pjAdj.push(a); pjAdjSave();
+    $('#pjAdjAmt').value = ''; $('#pjAdjNote').value = '';
+    msg.textContent = `Ditambahkan: ${type==='in'?'dana masuk':'dana keluar'} ${trFmt(type==='in'?amt:-amt, true)} pada ${HARI[trDow(iso)]}, ${pjLbl(iso)}${a.kanca ? ' · '+a.kanca : ''}.`;
+    S.pjAdjClearArm = false; TAB_RENDER.proyeksi();
+  });
+  $('#pjAdjList').addEventListener('click', e => {
+    const del = e.target.closest('[data-adjdel]');
+    if (del){ S.pjAdj = S.pjAdj.filter(a => a.id !== del.dataset.adjdel); pjAdjSave(); $('#pjAdjMsg').textContent = 'Penyesuaian dihapus.'; S.pjAdjClearArm = false; TAB_RENDER.proyeksi(); return; }
+    if (e.target.closest('#pjAdjClear')){
+      if (!S.pjAdjClearArm){ S.pjAdjClearArm = true; e.target.closest('#pjAdjClear').textContent = 'Klik lagi untuk menghapus semua'; return; }
+      S.pjAdj = []; S.pjAdjClearArm = false; pjAdjSave(); $('#pjAdjMsg').textContent = 'Semua penyesuaian dihapus.'; TAB_RENDER.proyeksi();
+    }
+  });
+}
 
 /* ===================== LOADER: baca file .xlsx langsung di browser (tanpa library) ===================== */
 const MONTHS = {JAN:1,FEB:2,MAR:3,APR:4,MEI:5,MAY:5,JUN:6,JUL:7,AGU:8,AUG:8,AGS:8,SEP:9,OKT:10,OCT:10,NOV:11,DES:12,DEC:12};
@@ -2178,6 +2287,7 @@ function bind(){
   $('#perToggle').addEventListener('click', e => { const b = e.target.closest('[data-per]'); if (b){ S.per = b.dataset.per; renderActive(); } });
   $('#pjMethods').addEventListener('click', e => { const b = e.target.closest('[data-pjm]'); if (!b || b.disabled) return;
     initProj(); S.pj.method = b.dataset.pjm; S.pj.custom = null; S.pj.fallbackFrom = null; TAB_RENDER.proyeksi(); });
+  pjBind();
   ['pjWd','pjWe'].forEach(id => $('#'+id).addEventListener('input', () => {
     initProj(); S.pj.custom = {wd:Number($('#pjWd').value), we:Number($('#pjWe').value)}; S.pj.method = 'custom'; TAB_RENDER.proyeksi(); }));
   document.addEventListener('click', e => {
