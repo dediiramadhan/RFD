@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow, noai, noimageai" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>Dashboard DPK Non Wholesale</title>
@@ -193,7 +194,7 @@ html.no-data .filters,html.no-data .srcbadge{display:none}
    Tempel URL Web App Google Apps Script (berakhiran /exec) di antara tanda kutip di bawah.
    Bila diisi, setiap unggahan disimpan di server dan langsung tampil untuk semua pengunjung,
    dan halaman menampilkan "Memuat data…" sampai data dari server berhasil dimuat. */
-const API_URL = "";
+const API_URL = "https://script.google.com/macros/s/AKfycbyPRsLLCqfefDPmm2pen_ndvTR07mqMsXLgmavwDhrxizQG0osekCk7XvlRtwmhG-41/exec";
 if (/^https:\/\/\S+$/.test(API_URL.trim()) && !(window.claude && window.claude.use)) document.documentElement.classList.add('is-loading');
 </script>
 </head>
