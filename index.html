@@ -182,6 +182,7 @@ html.is-loading .wrap{display:none}
 .loader button[hidden]{display:none}
 html.no-data .filters,html.no-data .srcbadge{display:none}
 #tabs .pill[disabled]{opacity:.38;cursor:not-allowed}
+.filters[hidden],.filters .field[hidden]{display:none !important}
 </style>
 <script data-app>
 /* ================= PENGATURAN SERVER DATA (untuk hosting sendiri) =================
@@ -1926,8 +1927,20 @@ function showTab(id){
   $$('section.sec').forEach(s => s.hidden = s.dataset.sec!==id);
   renderActive();
 }
+// Filter yang dipakai setiap tab (cmp = Bandingkan dengan, area = Wilayah, prod = Produk grafik)
+const TAB_FILTERS = {
+  ringkasan:['cmp','area'], wilayah:['cmp','area','prod'], segmen:['cmp','area'], kcp:['cmp','area'],
+  gerak:['area','prod'], proyeksi:['area'], tren:[], perbarui:[]
+};
+function syncFilters(){
+  const use = TAB_FILTERS[CURRENT] || [];
+  const ids = {cmp:'#fCmp', area:'#fArea', prod:'#fProd'};
+  for (const k in ids){ const f = $(ids[k]); const box = f && f.closest('.field'); if (box) box.hidden = !use.includes(k); }
+  const bar = $('.filters'); if (bar) bar.hidden = !use.length;
+}
 function renderActive(){
   syncTabs();
+  syncFilters();
   if ((CURRENT==='tren' && !TR) || (!D && CURRENT!=='perbarui' && CURRENT!=='tren')){
     if (CURRENT!=='perbarui'){ showTab('perbarui'); return; }
   }
